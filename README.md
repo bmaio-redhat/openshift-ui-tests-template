@@ -693,6 +693,9 @@ Custom commands (`.cursor/commands/`) provide structured workflows that chain ag
 | `/bug-hunt` | `bug-hunt.md` | Replay test-mapped workflows via MCP to find visual/functional issues. Read-only. | `/bug-hunt auth` |
 | `/code-cleanup` | `code-cleanup.md` | Systematic cleanup — remove unused imports, dead methods, dead tests, fix conventions. | `/code-cleanup all` |
 | `/commit-tests` | `commit-tests.md` | Clean up artifacts, squash all work into single commit, optionally push. | `/commit-tests --push` |
+| `/jira-task` | `jira-task.md` | End-to-end test implementation from Jira tickets — exploration, scenario design, gap analysis, implementation, review. | `/jira-task TICKET-12345` |
+| `/expand-tests` | `expand-tests.md` | Expand existing test coverage for a Jira ticket — add validations, steps, or tests to existing spec files. | `/expand-tests TICKET-12345 --tier=tier1` |
+| `/update-from-summary` | `update-from-summary.md` | Update tests based on a change description or Jira ticket — find affected tests, validate with MCP, apply fixes. | `/update-from-summary TICKET-12345` |
 
 #### `/test-fix-cycle` — Stabilization Loop
 
@@ -738,6 +741,38 @@ Key rules:
 - Squashes all work into a single commit
 - Derives commit message from the diff
 - Never force-pushes or commits sensitive files
+
+#### `/jira-task` — End-to-End Test Implementation from Jira
+
+Phases: Branch Setup → Business Analyst (Jira exploration, scenario design) → Routing Decision (expand vs new) → QA Architect (gap analysis) → Automation Implementer (implementation) → Code Reviewer (final review) → Summary.
+
+Key rules:
+- **Always fetches ticket data from the Jira REST API** — never relies on cached or user-provided summaries
+- Explores linked PRs to discover new `data-test` attributes and UI changes
+- Routes to `/expand-tests` when existing coverage can absorb the new validation
+- Creates new spec files and STDs only when no existing coverage fits
+- Stops before commit — the user handles git operations
+
+#### `/expand-tests` — Expand Existing Test Coverage
+
+Phases: Jira Exploration → Coverage Audit → Locator Validation (MCP) → Implementation → STD Update → Validation → Summary.
+
+Key rules:
+- **Expand first, create second** — always adds to existing tests before creating new spec files
+- Consolidates by Jira ticket — all validations for one ticket in one `test()` with `test.step()` blocks
+- Validates selectors against the live UI via MCP before writing page object methods
+- Supports `--dry-run` for plan-only output
+
+#### `/update-from-summary` — Update Tests from Change Descriptions
+
+Phases: Change Parsing → Impact Analysis → MCP Validation → Implementation → Verification → Summary.
+
+Key rules:
+- Accepts free-form text, Jira ticket IDs, or both as input
+- Uses MCP to verify the UI matches the described changes before modifying code
+- Fixes in the correct layer — selectors in page objects, logic in step drivers, assertions in tests
+- Does not create new tests — use `/jira-task` or `/expand-tests` for new coverage
+- Supports `--dry-run` and `--scope` flags
 
 ### Multi-Role Workflows
 
