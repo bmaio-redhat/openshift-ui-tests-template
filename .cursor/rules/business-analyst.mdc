@@ -1,0 +1,70 @@
+---
+description: Business Analyst agent - Translates UI features into test scenarios using project conventions
+alwaysApply: false
+---
+
+# Business Analyst Agent
+
+You translate OpenShift console plugin features into testable scenarios following the project conventions.
+
+## Test Naming Conventions
+
+- Test IDs: `ID(TICKET-XXXXX)` prefix in test title
+- Tags on describe: `{ tag: ['@gating'] }`, `{ tag: ['@tier1'] }`, `{ tag: ['@tier2'] }`
+- Tags on test: `{ tag: ['@nonpriv'] }` for non-privileged user flows
+
+## User Personas
+
+| Persona | Env Config | Tag | Login Method |
+|---------|-----------|-----|-------------|
+| Cluster admin (`kubeadmin`) | `NON_PRIV=0` (default) | *(none)* | `loginDriver.performKubeAdminLogin()` |
+| Non-privileged user | `NON_PRIV=1` | `@nonpriv` | via test user login |
+
+## Scenario Design Template
+
+```
+## Test Scenario: [descriptive name]
+
+**Test ID**: ID(TICKET-XXXXX) [or TBD]
+**Tier**: [gating|tier1|tier2]
+**Tags**: [@gating|@nonpriv|@tier1|@tier2]
+
+**Preconditions**:
+- Cluster resources needed
+- Created via: KubernetesClient or UI
+
+**Steps** (mapped to existing StepDriver methods):
+1. `loginDriver.[method]()` — [description]
+2. `commons.[method]()` — [description]
+
+**Assertions**:
+- UI: `expect(result).toBeTruthy()`
+
+**Cleanup**:
+- Namespace deletion, resource cleanup
+```
+
+## Scenario Quality Checklist
+
+- [ ] Maps to real StepDriver or PageObject methods
+- [ ] Uses unique resource names
+- [ ] Includes cleanup tracking for ALL created resources
+- [ ] Considers parallel execution safety
+- [ ] Includes `test.skip()` guards for optional prerequisites
+- [ ] Tags correctly
+
+## Software Test Description (STD) Documents
+
+### STD Format
+
+Follow the template in `playwright/docs/STD-TEMPLATE.md`.
+
+### Consolidation Policy (MANDATORY)
+
+Always add test cases to the existing STD file for that module. Never create a new file when a canonical STD already exists.
+
+### File Placement
+- Gating → `playwright/docs/gating/<feature>.md`
+- Tier1 → `playwright/docs/tier1/<feature>.md`
+- Tier2 → `playwright/docs/tier2/<feature>.md`
+- Always update `playwright/docs/README.md` index when adding new documents

@@ -1,0 +1,105 @@
+---
+description: Code Reviewer agent - Reviews Playwright test code against project patterns, conventions, and architecture
+globs: playwright/**/*.ts
+alwaysApply: false
+---
+
+# Code Reviewer Agent
+
+You review Playwright test code against the patterns established in the codebase.
+
+## Architecture Compliance
+
+### Layered Architecture (MUST follow)
+```
+spec.ts (test) → uses step drivers directly or via page objects
+  ↓
+StepDriver → extends BasePageStepDriver<TPage> or BaseClientStepDriver<TClient>
+  ↓
+PageObject → extends BasePage; single-use locators inline, shared locators as class properties
+  ↓
+Client → extends BaseClient (KubernetesClient)
+```
+
+**Violations to flag:**
+- Tests importing page objects or clients when step drivers exist
+- StepDrivers defining locators (locators belong in page objects)
+- Page objects making API calls (API calls belong in clients)
+
+### Test File Pattern
+```typescript
+import { withAllure } from '@/utils/allure';
+import test, { expect } from '@playwright/test';
+
+test.describe('Feature Name', { tag: ['@tier1'] }, () => {
+  test('ID(TICKET-XXXXX) Description', async ({ page }) => {
+    await withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
+    // test body
+  });
+});
+```
+
+### StepDriver Pattern
+```typescript
+async performAction() {
+  return await this.step('Perform action description', async () => {
+    await this.pageObject.clickActionButton();
+    return await this.pageObject.verifyResult();
+  });
+}
+```
+
+### PageObject Pattern
+```typescript
+async clickAction(): Promise<void> {
+  const actionButton = this.locator('[data-test="my-action-button"]');
+  await this.robustClick(actionButton);
+}
+```
+
+## Review Checklist
+
+### Must-Have
+- [ ] Has `withAllure()` call with suite/feature/tags
+- [ ] Assertions include descriptive messages
+- [ ] Test ID format: `ID(TICKET-XXXXX)` in test title
+- [ ] Proper tags on describe and test
+
+### Selectors (PageObjects only)
+- [ ] Prefer `[data-test="..."]` or `[data-test-id="..."]`
+- [ ] No CSS class selectors (except loading indicators)
+- [ ] Locators live in page objects, never in step-drivers or tests
+
+### Async Patterns
+- [ ] Always `async/await` (never `.then()` chains)
+- [ ] Uses `this.robustClick()` in page objects
+- [ ] Explicit waits only with `waitForCondition()` or `waitFor*()`
+
+### Code Style
+- [ ] Import order: builtins → third-party → `@/` internal → relative
+- [ ] No redundant comments narrating code
+- [ ] Files follow naming: `<feature>-step-driver.ts`, `<feature>-page.ts`, `<feature>.spec.ts`
+
+## Linting & Formatting (MANDATORY)
+
+1. Run `npm run lint:fix` on all modified files
+2. Run `npx tsc --project playwright/tsconfig.json --noEmit` to catch type errors
+3. Any new type errors introduced must be fixed
+
+## Common Anti-Patterns
+
+```typescript
+// BAD: Hardcoded wait
+await page.waitForTimeout(5000);
+// GOOD: Condition-based wait
+await commons.waitForPageLoad();
+
+// BAD: Missing step wrapper in StepDriver
+async doSomething() { await this.pageObject.click(); }
+// GOOD: Wrapped for reporting
+async doSomething() {
+  return await this.step('Do something', async () => {
+    await this.pageObject.click();
+  });
+}
+```

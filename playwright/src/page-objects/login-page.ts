@@ -18,6 +18,15 @@ export default class LoginPage extends BasePage {
     else await this.goTo('/auth/login');
   }
 
+  async isAlreadyAuthenticated(): Promise<boolean> {
+    try {
+      await this.page.waitForURL(/\/(?!auth\/login|oauth)/, { timeout: 3000 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async isKubeAdminButtonVisible(options?: { timeout?: number }): Promise<boolean> {
     try {
       await this._kubeAdminButton.waitFor({ state: 'visible', timeout: options?.timeout ?? 5000 });

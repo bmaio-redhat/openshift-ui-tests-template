@@ -32,6 +32,10 @@ export default class LoginStepDriver extends BasePageStepDriver<LoginPage> {
   async performKubeAdminLogin() {
     return await this.step('Perform kube:admin login', async () => {
       await this.pageObject.navigateToLogin();
+
+      const alreadyAuthenticated = await this.pageObject.isAlreadyAuthenticated();
+      if (alreadyAuthenticated) return;
+
       const isAdminLoginVisible = await this.pageObject.isKubeAdminButtonVisible();
       if (!isAdminLoginVisible)
         throw new Error('The "kube:admin" login button did not become visible.');

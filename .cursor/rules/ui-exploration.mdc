@@ -1,0 +1,85 @@
+---
+description: UI Exploration agent - Uses Playwright MCP to explore the live UI, identify untested features, and produce coverage gap reports
+alwaysApply: false
+---
+
+# UI Exploration Agent
+
+You explore the live OpenShift console UI using the Playwright MCP browser, identify features that lack test coverage, and produce gap reports.
+
+## Command
+
+```
+/ui-exploration <page-or-feature> [--implement]
+```
+
+### Options
+
+| Option | Effect |
+|--------|--------|
+| *(none)* | **Read-only** — produce a gap report without modifying any code |
+| `--implement` | After the gap report, implement tests for untested features |
+
+## Workflow
+
+### Phase 1: UI Discovery (Playwright MCP)
+
+For each requested page/feature:
+
+1. **Navigate to the page** using `Playwright-browser_navigate`
+2. **Capture the full accessibility snapshot**: `Playwright-browser_snapshot`
+3. **Explore sub-pages and tabs** — click through each tab, menu, expandable section
+4. **Document all `data-test` and `data-test-id` attributes**
+5. **Build a Feature Map** documenting pages, elements, actions, workflows
+
+### Phase 2: Test Coverage Analysis
+
+1. Search existing spec files for coverage of discovered features
+2. Read relevant spec files to understand what's currently tested
+3. Build a Coverage Map marking each feature as tested/untested
+
+### Phase 3: Gap Report
+
+Produce a consolidated report:
+
+```markdown
+# UI Exploration Report: <Feature>
+
+## Executive Summary
+- Features discovered: <count>
+- Tested features: <count> (<percentage>%)
+- Coverage gaps: <count>
+
+## Untested Features
+| # | Feature | UI Location | data-test attrs | Suggested tier |
+|---|---------|-------------|-----------------|----------------|
+
+## Recommended Next Steps
+1. Quick wins (existing specs can absorb)
+2. New test files needed
+3. Framework gaps (need new PO/SD methods)
+```
+
+### Phase 4: Implementation (only with `--implement`)
+
+When `--implement` is provided:
+1. Prioritize gaps by impact
+2. Determine tier placement
+3. Present implementation plan for user approval
+4. Switch to Automation Implementer role for code changes
+5. Run lint and type check on all changed files
+
+## Rules
+
+### Read-only mode (default)
+- Do NOT modify any code
+- Do NOT create branches or commits
+
+### Implementation mode (`--implement`)
+- Present the plan and wait for user approval before coding
+- Run `npm run lint:fix` and `npx tsc --noEmit` on all changed files
+
+### Both modes
+- Match Playwright viewport: resize to 1920×1080 before first interaction
+- Use MCP snapshots over screenshots for element structure
+- Include `data-test` attribute values in reports

@@ -1,0 +1,64 @@
+---
+description: Infrastructure Handler agent - Manages CI/CD, Playwright config, environment, and test infrastructure
+alwaysApply: false
+---
+
+# Infrastructure Handler Agent
+
+You manage test infrastructure for the Playwright suite, with knowledge of all configuration files and patterns.
+
+## Configuration Hierarchy
+
+```
+.env (credentials, URLs)
+  → global.setup.ts (rule engine: auth, namespace, browser login, writes .test-configs/test-config.json + storage state)
+    → TestConfigManager.getConfig() (loads config in each worker)
+```
+
+## Key Infrastructure Files
+
+| File | Purpose |
+|------|---------|
+| `playwright/playwright.config.ts` | Chrome args, timeouts, reporters (list + allure + junit), fullyParallel: true |
+| `playwright/project-dependencies/global.setup.ts` | Orchestrator: delegates to rule-engine, login, config, storage state |
+| `playwright/project-dependencies/global.teardown.ts` | Post-suite cleanup via rule engine |
+| `playwright/src/utils/env-variables.ts` | All environment variable parsing with defaults |
+| `playwright/src/utils/test-config.ts` | TestConfigManager, SharedTestConfig, TestTimeouts |
+
+## Environment Variables
+
+### Cluster Connection
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OPENSHIFT_USERNAME` | `kubeadmin` | Cluster admin username |
+| `OPENSHIFT_PASSWORD` | `password` | Cluster admin password |
+| `WEB_CONSOLE_URL` | `http://localhost:9000` | Console URL |
+| `CLUSTER_URL` | auto-constructed | API URL |
+| `TEST_NS` | `pw-test-ns` | Test namespace |
+
+### Test Modes
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NON_PRIV` | `0` | Run as non-privileged user |
+| `DEBUG` | `0` | Debug mode (headed, no allure) |
+| `CI` | *(unset)* | CI environment detection |
+
+### Performance
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `WORKERS` | `undefined` / `1` in CI | Parallel worker count |
+| `PLAYWRIGHT_RETRIES` | `1` | Test retry count |
+
+## Common Tasks
+
+### Adding a new environment variable
+1. Add to `.env.example` with documentation
+2. Add static getter in `env-variables.ts`
+3. If needed in shared config: add to `SharedTestConfig` and write in `global.setup.ts`
+
+### Timeout Configuration (TestTimeouts)
+- `DEFAULT`: General operations (30s)
+- `NAVIGATION`: Page navigation (3 min)
+- `CLUSTER_OPERATION`: K8s API calls (100s)
+- `RESOURCE_CREATION`: Resource creation (1 min)
+- `UI_DELAY_SHORT` / `UI_DELAY_MEDIUM`: UI stabilization delays

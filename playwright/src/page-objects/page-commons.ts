@@ -153,25 +153,29 @@ export default class PageCommons extends BasePage {
   }
 
   async openPerspectiveDropdown(): Promise<void> {
-    const perspectiveDropdown = this.locator('[data-tour-id="tour-perspective-dropdown"]');
-    await perspectiveDropdown.waitFor({
+    const perspectiveToggle = this.locator('[data-test-id="perspective-switcher-toggle"]');
+    await perspectiveToggle.waitFor({
       state: 'visible',
       timeout: TestTimeouts.UI_VISIBILITY_QUICK,
     });
-    await this.robustClick(perspectiveDropdown);
+    await this.robustClick(perspectiveToggle);
   }
 
   async switchToPerspective(perspectiveName: string): Promise<void> {
     await this.openPerspectiveDropdown();
-    const option = this.locator('[data-test-id="perspective-switcher-menu-option"]').filter({
+    const option = this.locator('[role="option"]').filter({
       hasText: perspectiveName,
     });
     await option.waitFor({ state: 'visible', timeout: TestTimeouts.UI_VISIBILITY_QUICK });
     await this.robustClick(option);
   }
 
+  async switchToCorePlatformPerspective(): Promise<void> {
+    await this.switchToPerspective('Core platform');
+  }
+
   async switchToAdministratorPerspective(): Promise<void> {
-    await this.switchToPerspective('Administrator');
+    await this.switchToCorePlatformPerspective();
   }
 
   async waitForPageLoad() {

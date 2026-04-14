@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "Playwright": {
+      "command": "npx",
+      "env": {},
+      "args": ["@playwright/mcp@latest", "--ignore-https-errors"]
+    }
+  }
+}

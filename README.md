@@ -11,6 +11,11 @@ End-to-end testing template for OpenShift console plugins using Playwright with 
 - [Writing Tests](#writing-tests)
 - [Environment Configuration](#environment-configuration)
 - [Authentication Methods](#authentication-methods)
+- [Cursor Agentic Workflow](#cursor-agentic-workflow)
+  - [Agent Personas](#agent-personas)
+  - [Custom Commands](#custom-commands)
+  - [Multi-Role Workflows](#multi-role-workflows)
+  - [MCP Integration](#mcp-integration)
 - [Documentation](#documentation)
 
 ---
@@ -651,6 +656,149 @@ TypeScript configuration:
 - Path aliases (`@/` = `playwright/src/`)
 - ES2020 target
 - CommonJS modules
+
+---
+
+## 🤖 Cursor Agentic Workflow
+
+This project uses a **multi-persona agentic workflow** powered by [Cursor](https://cursor.sh/) rules (`.cursor/rules/*.mdc`), custom commands (`.cursor/commands/*.md`), and Playwright MCP integration. The workflow accelerates test creation, maintenance, debugging, and documentation by routing tasks to specialized agent roles.
+
+### Agent Personas
+
+An **Orchestrator** (`orchestrator.mdc`, `alwaysApply: true`) routes every request to one or more specialized roles:
+
+| Role | Rule file | Activation | Responsibilities |
+|------|-----------|-----------|-----------------|
+| **QA Architect** | `qa-architect.mdc` | On request | Framework design, component gap analysis, tier placement (gating/tier1/tier2), locator strategy, architectural policies (page encapsulation, UI-first navigation, test isolation). |
+| **Business Analyst** | `business-analyst.mdc` | On request | Feature-to-scenario translation, acceptance criteria, STD document creation/maintenance, consolidation policy (append to existing STDs, never duplicate). |
+| **Code Reviewer** | `code-reviewer.mdc` | `playwright/**/*.ts` | Pattern compliance audit, page encapsulation checks, locator strategy (inline vs property), lint/type-check enforcement, artifact cleanup. |
+| **Automation Implementer** | `automation-implementer.mdc` | `playwright/**/*.ts` | Write tests, step drivers, page objects. Enforces UI-first navigation, namespace isolation, context-driven data flow. |
+| **Infrastructure Handler** | `infrastructure-handler.mdc` | On request | Playwright config, environment variables, global setup/teardown rule engine, TestTimeouts. |
+| **Test Executor** | `test-executor.mdc` | On request | Run tests, result analysis, failure classification, live browser debugging via Playwright MCP, development mode (`PLAYWRIGHT_RETRIES=0`). |
+| **Git Handler** | `git-handler.mdc` | On request | Pre-commit artifact cleanup, squash commits into single commit, `.gitignore` maintenance. Never force-pushes or amends pushed commits. |
+| **UI Explorer** | `ui-exploration.mdc` | On request | Explore live UI via Playwright MCP, discover untested features and `data-test` attributes, produce gap report. Optionally implement tests with `--implement`. |
+| **Bug Hunter** | `bug-hunter.mdc` | On request | Replay test-mapped workflows via Playwright MCP to find visual, functional, and data issues. Read-only. |
+| **Code Cleanup** | `code-cleanup.mdc` | On request | Systematic dead code removal — unused imports, dead methods, dead tests, code duplication, convention violations. Produces structured cleanup report. |
+
+### Custom Commands
+
+Custom commands (`.cursor/commands/`) provide structured workflows that chain agent personas. Tags must always be wrapped in single quotes (e.g., `'@gating'`).
+
+| Command | File | Purpose | Example |
+|---------|------|---------|---------|
+| `/test-fix-cycle` | `test-fix-cycle.md` | Run a test suite, analyze failures, apply fixes or skips, iterate until stable. Uses MCP for live debugging. | `/test-fix-cycle '@tier1'` |
+| `/health-check` | `health-check.md` | Read-only diagnostic run. Reports pass/fail/skip with failure classification. No code changes. | `/health-check '@tier1' --workers=4` |
+| `/debug-test` | `debug-test.md` | Focused single-test debugging using Playwright MCP as primary tool. | `/debug-test TEMPLATE-001` |
+| `/ui-exploration` | `ui-exploration.md` | Explore UI pages via Playwright MCP, identify untested features, produce gap report. Supports `--implement`. | `/ui-exploration projects --implement` |
+| `/bug-hunt` | `bug-hunt.md` | Replay test-mapped workflows via MCP to find visual/functional issues. Read-only. | `/bug-hunt auth` |
+| `/code-cleanup` | `code-cleanup.md` | Systematic cleanup — remove unused imports, dead methods, dead tests, fix conventions. | `/code-cleanup all` |
+| `/commit-tests` | `commit-tests.md` | Clean up artifacts, squash all work into single commit, optionally push. | `/commit-tests --push` |
+
+#### `/test-fix-cycle` — Stabilization Loop
+
+Phases: Initial Run → Result Analysis → Fix Cycle (per failure) → Skip Policy → Validation Run → Summary.
+
+Key rules:
+- Always uses `PLAYWRIGHT_RETRIES=0` during the cycle
+- Uses MCP browser tools to inspect live UI before guessing at selectors
+- Fixes in the correct layer: selectors in page objects, logic in step drivers, assertions in tests
+- Tests that cannot be fixed after 2 attempts are skipped with a descriptive reason
+
+#### `/health-check` — Read-Only Diagnostic
+
+Phases: Pre-flight → Execute Tests → Parse Results → Classify Failures → Report.
+
+Key rules:
+- **Read-only** — no code modifications, no skips, no fixes
+- Produces a structured report with pass/fail/skip counts, failure classification, and recommendations
+
+#### `/debug-test` — Focused Single-Test Debugging
+
+Phases: Reproduce Failure → Diagnose with MCP (primary) / Scripts (fallback) → Apply Fix → Verify (3 consecutive passes).
+
+Key rules:
+- **MCP first** — uses Playwright MCP browser tools (snapshot, navigate, evaluate) as primary debugging method
+- Targets a single test at a time
+- Always uses `PLAYWRIGHT_RETRIES=0` for immediate feedback
+
+#### `/code-cleanup` — Systematic Dead Code Removal
+
+Phases: Static Analysis → Apply Fixes (dependency order: PO → SD → tests) → Validation (lint + type-check) → Cleanup Report.
+
+Key rules:
+- **Grep before delete** — always searches full codebase for references before removing code
+- **Structural only** — does not change test logic, only removes dead code and fixes conventions
+
+#### `/commit-tests` — Clean Commit with Artifact Cleanup
+
+Phases: Branch Guard → Pre-Commit Cleanup → Lint → Review Changes → Squash Commit → Post-Commit Verification → Push (optional).
+
+Key rules:
+- Cleans up artifacts before staging
+- Squashes all work into a single commit
+- Derives commit message from the diff
+- Never force-pushes or commits sensitive files
+
+### Multi-Role Workflows
+
+Complex tasks chain roles in sequence:
+
+1. **New feature testing**: Business Analyst → QA Architect → Automation Implementer → Code Reviewer → Business Analyst (STD)
+2. **Test maintenance**: Code Reviewer → Automation Implementer → Code Reviewer
+3. **Coverage expansion**: Business Analyst → QA Architect → Automation Implementer → Business Analyst (STD)
+4. **Test execution with auto-fix**: Test Executor → Automation Implementer → Test Executor
+5. **Framework extension**: QA Architect → Automation Implementer → Code Reviewer
+6. **Coverage discovery**: UI Explorer → Gap Report
+7. **Focused debugging**: Test Executor → Automation Implementer → Test Executor (verify 3x)
+8. **Clean commit**: Git Handler → optional push
+9. **Bug hunting**: Bug Hunter → Bug Hunt Report
+10. **Code cleanup**: Code Cleanup → optional Git Handler
+
+### MCP Integration
+
+The project uses the **Playwright MCP** server (configured in `.cursor/mcp.json`) for live browser interaction during test debugging and UI exploration.
+
+#### Playwright MCP — Live Browser Interaction
+
+Enables live browser inspection during test debugging. The Test Executor, UI Explorer, Bug Hunter, and Debug Test workflows use it to navigate the application under test, inspect element selectors, verify UI state, and diagnose test failures without running the full test suite.
+
+Key tools: `browser_navigate`, `browser_snapshot` (accessibility tree), `browser_evaluate` (DOM inspection), `browser_take_screenshot`, `browser_console_messages`, `browser_network_requests`.
+
+#### MCP Configuration
+
+```json
+{
+  "mcpServers": {
+    "Playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--ignore-https-errors"]
+    }
+  }
+}
+```
+
+### Setup
+
+To use the agentic workflow:
+
+1. **Cursor IDE** — Open the project in [Cursor](https://cursor.sh/) (v0.48+).
+2. **Rules** — The `.cursor/rules/` directory is committed to the repo; rules load automatically. The orchestrator rule (`alwaysApply: true`) activates on every session. Other rules activate when their `globs` pattern matches (e.g. `playwright/**/*.ts`) or when explicitly requested.
+3. **Commands** — The `.cursor/commands/` directory contains custom command definitions. Invoke them in Cursor chat with `/command-name` followed by arguments.
+4. **Playwright MCP** — Configured in `.cursor/mcp.json`. Cursor auto-starts it when MCP tools are invoked. Requires `npx` and `@playwright/mcp` (installed via npm).
+
+### Key Conventions Enforced by Agents
+
+| Convention | Enforced by |
+|-----------|-------------|
+| Layered architecture (spec → step drivers → page objects → clients) | Orchestrator, Code Reviewer, Automation Implementer |
+| `withAllure(...)` with suite/feature/tags | Code Reviewer, Automation Implementer |
+| Page encapsulation (`page` access only in page objects) | Code Reviewer, Automation Implementer |
+| UI-first navigation, URL fallback only in page object methods | Automation Implementer |
+| Inline locators for single-use, class properties for 2+ methods | Code Reviewer, Automation Implementer |
+| STD consolidation (append to existing, never duplicate) | Business Analyst |
+| Test ID traceability (`ID(TICKET-XXXXX)`) | Business Analyst, QA Architect |
+| Rule engine for global setup/teardown | Infrastructure Handler |
+| Development mode (`PLAYWRIGHT_RETRIES=0`) during fix cycles | Test Executor, Automation Implementer |
 
 ---
 

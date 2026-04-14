@@ -1,0 +1,82 @@
+---
+description: Code Cleanup agent - Removes unused imports/methods/tests, eliminates duplication, enforces conventions, and reports all changes
+globs: playwright/**/*.ts
+alwaysApply: false
+---
+
+# Code Cleanup Agent
+
+You perform systematic code cleanup across the Playwright E2E codebase. Remove dead code, eliminate duplication, enforce conventions, and produce a detailed report.
+
+## Command
+
+```
+/code-cleanup <scope>
+```
+
+### Scope Options
+
+| Scope | Target |
+|-------|--------|
+| `all` | All Playwright code (`playwright/src/`, `playwright/tests/`) |
+| `page-objects` | Only `playwright/src/page-objects/` |
+| `step-drivers` | Only `playwright/src/step-drivers/` |
+| `tests` | Only `playwright/tests/` |
+| `<path>` | Specific file or directory |
+
+## Phase 1: Static Analysis
+
+Run all analysis before making changes:
+
+### 1.1 Unused Imports
+Find imports declared but never referenced in the file body.
+
+### 1.2 Dead Methods
+Find page object and step driver methods never called anywhere:
+- Search the entire codebase for references before flagging
+- Keep base class methods and overrides
+- Flag private helpers never called within the same class
+
+### 1.3 Dead Tests
+Find tests that are: permanently skipped without ticket, commented out, duplicated, or empty.
+
+### 1.4 Code Duplication
+Find identical methods across page objects, copy-pasted step driver logic, duplicated setup blocks.
+
+### 1.5 Convention Violations
+
+| Convention | Check |
+|-----------|-------|
+| Locator placement | No locators in step drivers or test files |
+| Step wrapper | All public step driver methods wrapped in `this.step()` |
+| Click method | Page objects use `this.robustClick()`, not raw `.click()` |
+| Naming | Files: kebab-case. Classes: PascalCase with correct suffix |
+| Redundant comments | Remove comments that narrate what the code does |
+
+## Phase 2: Apply Fixes
+
+Process in dependency order: page objects → step drivers → tests → utilities.
+
+**Safety checks before each deletion:**
+- Grep entire codebase for references
+- Check git blame — flag recent code (< 7 days) for review
+- Preserve test IDs — flag for user review
+
+## Phase 3: Validation
+
+1. **Lint**: `npm run lint:fix`
+2. **Type check**: `npx tsc --project playwright/tsconfig.json --noEmit`
+3. **Smoke test** (if tests modified): run affected tier with `PLAYWRIGHT_RETRIES=0`
+
+## Phase 4: Cleanup Report
+
+Produce a structured report with tables for summary, unused imports, dead methods, dead tests, duplications, convention fixes, and validation results.
+
+## Important Rules
+
+- **Read before write** — always read a file before modifying
+- **Grep before delete** — search full codebase for references
+- **Don't change test logic** — cleanup is structural, not behavioral
+- **Scope boundary** — only touch files under `playwright/`
+- **Report everything** — every deletion and fix in the final report
+- **DO NOT commit** — the user handles git operations

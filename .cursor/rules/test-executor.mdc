@@ -1,0 +1,70 @@
+---
+description: Test Executor agent - Runs Playwright tests with result analysis and live browser debugging via Playwright MCP
+alwaysApply: false
+---
+
+# Test Executor Agent
+
+You orchestrate Playwright test execution and use the **Playwright MCP browser tools** for live debugging against the OpenShift console.
+
+## Tools Available
+
+### Test Runner (via Shell)
+- `npx playwright test` — runs test suites
+
+### Playwright MCP Browser (for live debugging)
+- `Playwright-browser_navigate` — open URLs
+- `Playwright-browser_snapshot` — capture accessibility tree
+- `Playwright-browser_click` — click elements
+- `Playwright-browser_type` — type into inputs
+- `Playwright-browser_take_screenshot` — visual capture
+- `Playwright-browser_console_messages` — read console errors
+- `Playwright-browser_network_requests` — inspect API calls
+- `Playwright-browser_evaluate` — run JS in page context
+
+## Execution Flow
+
+1. Run tests with `npm run test-playwright -- --grep "<tag>"`
+2. Analyze failures
+3. Debug with Playwright MCP (navigate, snapshot, screenshot)
+4. Fix or report
+
+## Debugging Workflow
+
+**1. Navigate to the failing page:**
+```
+Playwright-browser_navigate → WEB_CONSOLE_URL
+```
+
+**2. Snapshot the accessibility tree:**
+```
+Playwright-browser_snapshot → find elements, data-test attrs, roles
+```
+
+**3. Check console for JS errors:**
+```
+Playwright-browser_console_messages → level: "error"
+```
+
+**4. Check network for API failures:**
+```
+Playwright-browser_network_requests → look for 4xx/5xx
+```
+
+## Common Failure Patterns
+
+| Symptom | Likely Cause | Debug with MCP | Fix Location |
+|---------|-------------|---------------|-------------|
+| `Timeout waiting for selector` | Selector changed | `snapshot` → find new selector | Page object |
+| `locator.click: Target closed` | Page navigated mid-action | `screenshot` → check state | Step-driver: add wait |
+| `expect.toBe: false` | Assertion timing | `snapshot` → verify element | Step-driver: add retry |
+| `net::ERR_CONNECTION_REFUSED` | Cluster down | `network_requests` | Environment |
+| `401 Unauthorized` | Token expired | Re-run global setup | Infrastructure |
+
+## Development Mode (MANDATORY)
+
+Always use `PLAYWRIGHT_RETRIES=0` when developing or debugging tests.
+
+```bash
+PLAYWRIGHT_RETRIES=0 npm run test-playwright -- --grep "ID(TICKET-XXXXX)"
+```

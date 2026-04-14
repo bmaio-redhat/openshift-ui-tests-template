@@ -1,0 +1,110 @@
+---
+description: Automation Implementer agent - Writes Playwright tests, step-drivers, and page objects following project patterns
+globs: playwright/**/*.ts
+alwaysApply: false
+---
+
+# Automation Implementer Agent
+
+You implement Playwright E2E tests following the exact patterns in the codebase. Always check existing implementations before creating new ones.
+
+## Creating a New Test
+
+File location: `playwright/tests/<tier>/<feature>/<test-name>.spec.ts`
+
+```typescript
+import PageCommons from '@/page-objects/page-commons';
+import LoginStepDriver from '@/step-drivers/login-step-driver';
+import { withAllure } from '@/utils/allure';
+import test, { expect } from '@playwright/test';
+
+test.describe('Feature Name', { tag: ['@tier1'] }, () => {
+  test('ID(TICKET-XXXXX) Descriptive name', async ({ page }) => {
+    await withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
+
+    const loginDriver = LoginStepDriver.Init(page);
+    const commons = new PageCommons(page);
+
+    await test.step('Navigate and verify', async () => {
+      // test body
+    });
+  });
+});
+```
+
+## Creating a New StepDriver
+
+File: `playwright/src/step-drivers/<feature>-step-driver.ts`
+
+```typescript
+import { Page } from '@playwright/test';
+import MyPage from '@/page-objects/<feature>-page';
+import BasePageStepDriver from './base-page-step-driver';
+
+export default class MyStepDriver extends BasePageStepDriver<MyPage> {
+  constructor(page: Page) {
+    super(page, MyPage);
+  }
+
+  async navigateToFeature() {
+    return await this.step('Navigate to feature', async () => {
+      await this.pageObject.navigateToFeature();
+    });
+  }
+}
+```
+
+## Creating a New PageObject
+
+File: `playwright/src/page-objects/<feature>-page.ts`
+
+**Locator rule**: Define locators inline in the method that uses them. Only extract to a class property if the same locator is used in 2+ methods.
+
+```typescript
+import { Page } from '@playwright/test';
+import BasePage from './base-page';
+
+export default class MyPage extends BasePage {
+  constructor(page: Page) { super(page); }
+
+  private readonly _nameInput = this.locator('#name-input');
+
+  async clickActionButton(): Promise<void> {
+    await this.robustClick(this.locator('[data-test="my-action"]'));
+  }
+
+  async fillName(name: string): Promise<void> {
+    await this._nameInput.fill(name);
+  }
+
+  async navigateToFeaturePage(namespace: string): Promise<void> {
+    await this.goTo(`/k8s/ns/${namespace}/my-feature`);
+  }
+}
+```
+
+## Key Implementation Rules
+
+- **Selectors**: `[data-test="..."]` or `[data-test-id="..."]`
+- **Clicks**: `this.robustClick(locator)` in page objects
+- **State**: `this.setStoreKeyVal(ContextKey.X, value)` / `this.getStoreKeyVal(ContextKey.X)`
+- **Steps wrapper**: Every public StepDriver method MUST be wrapped in `this.step()`
+- **File naming**: kebab-case files, PascalCase classes with `StepDriver`/`Page` suffix
+
+## Test Development Mode (MANDATORY)
+
+When developing or debugging tests, disable retries for immediate feedback:
+
+```bash
+PLAYWRIGHT_RETRIES=0 npm run test-playwright -- --grep "ID(TICKET-XXXXX)"
+```
+
+## Mandatory Test Execution After Implementation
+
+Every new or modified test must be executed against the live cluster before completion:
+
+1. Write the code
+2. Type-check + lint: `npx tsc --noEmit` and `npm run lint:fix`
+3. Run the test with `PLAYWRIGHT_RETRIES=0`
+4. Debug and fix failures using Playwright MCP
+5. Confirm passing before marking complete
