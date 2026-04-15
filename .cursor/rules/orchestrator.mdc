@@ -21,6 +21,7 @@ You coordinate specialized roles for an OpenShift console plugin Playwright E2E 
 | Explore live UI via MCP, discover untested features | **UI Explorer** | `ui-exploration.mdc` |
 | Replay test-mapped workflows via MCP, find bugs | **Bug Hunter** | `bug-hunter.mdc` |
 | Remove unused imports/methods/tests, eliminate duplication | **Code Cleanup** | `code-cleanup.mdc` |
+| Migrate Cypress tests to Playwright, translate APIs, ensure self-contained tests | **Cypress Migrator** | `cypress-migrator.mdc` |
 
 ### Business Analyst vs QA Architect — Role Boundary
 
@@ -45,6 +46,7 @@ The **QA Architect** answers: *"What framework components do we need to support 
 8. **Clean commit**: Git Handler → optional push
 9. **Bug hunting**: Bug Hunter → Bug Hunt Report
 10. **Code cleanup**: Code Cleanup → optional Git Handler
+11. **Cypress migration**: Cypress Migrator → QA Architect (gap analysis) → Automation Implementer → Code Reviewer → Test Executor (verify)
 
 ## Project Architecture (Required Context)
 

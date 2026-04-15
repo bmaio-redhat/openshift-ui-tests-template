@@ -679,6 +679,7 @@ An **Orchestrator** (`orchestrator.mdc`, `alwaysApply: true`) routes every reque
 | **UI Explorer** | `ui-exploration.mdc` | On request | Explore live UI via Playwright MCP, discover untested features and `data-test` attributes, produce gap report. Optionally implement tests with `--implement`. |
 | **Bug Hunter** | `bug-hunter.mdc` | On request | Replay test-mapped workflows via Playwright MCP to find visual, functional, and data issues. Read-only. |
 | **Code Cleanup** | `code-cleanup.mdc` | On request | Systematic dead code removal — unused imports, dead methods, dead tests, code duplication, convention violations. Produces structured cleanup report. |
+| **Cypress Migrator** | `cypress-migrator.mdc` | On request | Translates Cypress E2E tests into idiomatic Playwright code. Rewrites by intent (not line-by-line), ensures self-contained tests, maps Cypress APIs to Playwright equivalents, verifies selectors via MCP. |
 
 ### Custom Commands
 
@@ -696,6 +697,7 @@ Custom commands (`.cursor/commands/`) provide structured workflows that chain ag
 | `/jira-task` | `jira-task.md` | End-to-end test implementation from Jira tickets — exploration, scenario design, gap analysis, implementation, review. | `/jira-task TICKET-12345` |
 | `/expand-tests` | `expand-tests.md` | Expand existing test coverage for a Jira ticket — add validations, steps, or tests to existing spec files. | `/expand-tests TICKET-12345 --tier=tier1` |
 | `/update-from-summary` | `update-from-summary.md` | Update tests based on a change description or Jira ticket — find affected tests, validate with MCP, apply fixes. | `/update-from-summary TICKET-12345` |
+| `/migrate` | `migrate.md` | Migrate a Cypress test file or feature to Playwright — analyze intent, map APIs, create self-contained tests, verify via MCP. Supports `--analyze` and `--dry-run`. | `/migrate cypress/tests/tier1/vm-tabs/overview.cy.ts` |
 
 #### `/test-fix-cycle` — Stabilization Loop
 
@@ -774,6 +776,22 @@ Key rules:
 - Does not create new tests — use `/jira-task` or `/expand-tests` for new coverage
 - Supports `--dry-run` and `--scope` flags
 
+#### `/migrate` — Cypress to Playwright Migration
+
+Phases: Analysis → Selector Discovery (MCP) → Implementation → Validation.
+
+Accepts a Cypress `.cy.ts` file path, feature name, or directory. Supports `--analyze` (plan only, no code) and `--dry-run` (generate code without writing files).
+
+Key rules:
+- **Understand, then rewrite** — extracts the intent of each Cypress `it` block and implements it using idiomatic Playwright APIs, never a line-by-line transliteration
+- **Self-contained tests** — each Playwright `test()` creates its own resources, asserts independently, and cleans up. Sequential Cypress `it` blocks that share state are merged into a single `test()` with `test.step()` blocks
+- **Most specific API** — uses `getByRole`, `getByTestId`, `getByText` etc. over generic `page.locator()` when they improve readability
+- **Condition-based waits** — all `cy.wait(ms)` calls are replaced with assertions, `waitForCondition()`, or locator timeouts. `page.waitForTimeout()` is never used
+- **K8s client over shell** — `cy.exec('oc ...')` calls are replaced with `KubernetesClient` methods via client step drivers
+- **Framework-first** — searches existing page objects and step drivers before creating new ones
+- **MCP selector verification** — uses Playwright MCP to navigate the live UI and verify selectors before writing page object methods
+- Comprehensive API translation tables cover selectors, actions, navigation, assertions, waits, resource lifecycle, environment config, and conditional logic
+
 ### Multi-Role Workflows
 
 Complex tasks chain roles in sequence:
@@ -788,6 +806,7 @@ Complex tasks chain roles in sequence:
 8. **Clean commit**: Git Handler → optional push
 9. **Bug hunting**: Bug Hunter → Bug Hunt Report
 10. **Code cleanup**: Code Cleanup → optional Git Handler
+11. **Cypress migration**: Cypress Migrator → QA Architect (gap analysis) → Automation Implementer → Code Reviewer → Test Executor (verify)
 
 ### MCP Integration
 
@@ -834,6 +853,9 @@ To use the agentic workflow:
 | Test ID traceability (`ID(TICKET-XXXXX)`) | Business Analyst, QA Architect |
 | Rule engine for global setup/teardown | Infrastructure Handler |
 | Development mode (`PLAYWRIGHT_RETRIES=0`) during fix cycles | Test Executor, Automation Implementer |
+| Self-contained tests (no shared mutable state across tests) | Cypress Migrator, QA Architect |
+| Condition-based waits (never `waitForTimeout` or `cy.wait`) | Cypress Migrator, Code Reviewer |
+| K8s client over shell commands (no `cy.exec('oc ...')`) | Cypress Migrator, Code Reviewer |
 
 ---
 
