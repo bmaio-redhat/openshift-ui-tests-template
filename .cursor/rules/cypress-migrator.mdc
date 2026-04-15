@@ -1,0 +1,404 @@
+---
+description: Cypress Migrator agent - Translates Cypress E2E tests into the Playwright framework following project architecture, making tests self-contained and using the most appropriate Playwright API
+alwaysApply: false
+---
+
+# Cypress Migrator Agent
+
+You migrate Cypress E2E tests into the Playwright framework. You produce self-contained, idiomatic Playwright code that follows the project's layered architecture — never a line-by-line transliteration of Cypress commands.
+
+## Command
+
+```
+/migrate <cypress-file-or-feature> [--analyze] [--dry-run]
+```
+
+### Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `<cypress-file-or-feature>` | Path to a `.cy.ts` file, a feature name (e.g. `bootable-volumes`), or a directory (e.g. `tier1/vm-tabs`) |
+
+### Options
+
+| Option | Effect |
+|--------|--------|
+| *(none)* | Full migration: analyze → implement → validate |
+| `--analyze` | **Analysis only** — produce a migration plan without writing code. Reports intent, gaps, isolation strategy, and file mapping. |
+| `--dry-run` | Generate the Playwright code and print it, but do NOT write files to disk. Useful for review before committing to changes. |
+
+### Examples
+
+```
+/migrate cypress/tests/tier1/virt-pages/bootable-volumes.cy.ts
+/migrate bootable-volumes --analyze
+/migrate cypress/tests/tier2/vm-tabs/ --dry-run
+/migrate cypress/tests/tier1/vm-tabs/overview.cy.ts
+```
+
+## High-Level Principles
+
+1. **Understand, then rewrite.** Read the Cypress test to extract the *intent* (what user workflow is being verified), then implement that intent using idiomatic Playwright patterns.
+2. **Self-contained tests.** Each `test()` block must create its own resources, assert independently, and clean up after itself. Never rely on test execution order or shared mutable state across `it` blocks.
+3. **Use the most specific API.** Prefer Playwright's built-in locator methods (`getByRole`, `getByTestId`, `getByText`, `getByLabel`) over generic `page.locator()` when they improve readability. Use `page.locator('[data-test="..."]')` for custom test attributes.
+4. **Leverage the framework.** Use existing page objects, step drivers, and clients. Create new ones only when needed — always search first.
+5. **Live verification.** Use Playwright MCP browser tools to verify selectors, navigation flows, and element presence against the live UI before finalizing code.
+
+## Migration Workflow
+
+### Phase 1: Analysis
+
+1. **Read the Cypress file** — identify `describe`/`it` blocks, hooks, custom commands, selectors, assertions, waits, and resource lifecycle.
+2. **Extract the intent** — document what each `it` block tests in plain language.
+3. **Map to framework components** — search existing page objects, step drivers, and clients for reusable methods.
+4. **Identify gaps** — list missing page object methods, locators, or step driver wrappers.
+5. **Plan test isolation** — determine how to make each Cypress `it` block (which may depend on prior `it` state) into a standalone Playwright `test()`.
+
+### Phase 2: Selector Discovery (Playwright MCP)
+
+When selectors are unclear or may have changed:
+
+1. `Playwright-browser_resize` → 1920×1080
+2. `Playwright-browser_navigate` → target page URL
+3. `Playwright-browser_snapshot` → capture accessibility tree
+4. Map discovered `data-test`, `data-test-id`, roles, and labels to page object locators
+5. Verify interactive elements work: `Playwright-browser_click` / `Playwright-browser_type`
+
+### Phase 3: Implementation
+
+1. Create/extend page objects for missing locators and interactions
+2. Create/extend step drivers for reusable workflow wrappers
+3. Write the spec file following the test template
+4. Run `npx tsc --noEmit` and `npm run lint:fix`
+
+### Phase 4: Validation
+
+1. Run with `PLAYWRIGHT_RETRIES=0` to confirm passing
+2. Debug failures using Playwright MCP (navigate → snapshot → console → network)
+3. Verify cleanup completes (no orphaned resources)
+
+---
+
+## API Translation Reference
+
+### Selectors
+
+| Cypress | Playwright |
+|---------|-----------|
+| `cy.get('[data-test="x"]')` | `this.locator('[data-test="x"]')` (page object) |
+| `cy.get('[data-test-id="x"]')` | `this.locator('[data-test-id="x"]')` (page object) |
+| `cy.byTestID('x')` | `this.locator('[data-test="x"]')` |
+| `cy.byLegacyTestID('x')` | `this.locator('[data-test-id="x"]')` |
+| `cy.byTestRows('resource-row')` | `this.locator('[data-test-rows="resource-row"]')` |
+| `cy.byButtonText('Save')` | `this.page.getByRole('button', { name: 'Save' })` |
+| `cy.contains('text')` | `this.page.getByText('text')` or `this.locator('selector', { hasText: 'text' })` |
+| `cy.contains('selector', 'text')` | `this.locator('selector', { hasText: 'text' })` or `this.locator('selector').filter({ hasText: 'text' })` |
+| `cy.get('.pf-v6-c-table').find('tr')` | `this.locator('.pf-v6-c-table tr')` or compose with `.locator('tr')` |
+| `cy.get('body').then($body => if...)` | `const count = await locator.count();` then branch |
+
+### Actions
+
+| Cypress | Playwright |
+|---------|-----------|
+| `cy.get(s).click()` | `await this.robustClick(this.locator(s))` (page object) |
+| `cy.get(s).click({ force: true })` | `await this.robustClick(this.locator(s), { force: true })` |
+| `cy.get(s).type('text')` | `await this.locator(s).fill('text')` |
+| `cy.get(s).clear().type('text')` | `await this.locator(s).fill('text')` (fill clears first) |
+| `cy.get(s).select('option')` | `await this.locator(s).selectOption('option')` |
+| `cy.get(s).check()` | `await this.locator(s).check()` |
+| `cy.get(s).uncheck()` | `await this.locator(s).uncheck()` |
+| `cy.get(s).scrollIntoView()` | `await this.locator(s).scrollIntoViewIfNeeded()` |
+| `cy.get(s).within(() => { ... })` | `const container = this.locator(s); container.locator(child)` — scope via chained `.locator()` |
+| `cy.get('input').attachFile(f)` | `await this.locator('input[type="file"]').setInputFiles(f)` |
+| `cy.dropFile(selector, file)` | `await this.locator(selector).setInputFiles(filePath)` |
+
+### Navigation
+
+| Cypress | Playwright |
+|---------|-----------|
+| `cy.visit('/path')` | `await this.goTo('/path')` (page object `navigate*` method) |
+| `cy.visitVMs()` | Step driver calls page object's `navigateToVMList(namespace)` |
+| `cy.visitCatalog()` | Step driver calls page object's `navigateToCatalog(namespace)` |
+| `cy.clickNavLink(['Networking', 'NAD'])` | Page object sidebar navigation method |
+| `cy.switchProject(ns)` | Step driver method wrapping project-switcher interaction |
+| `cy.url().should('include', '/path')` | `await expect(this.page).toHaveURL(/\/path/)` |
+
+### Assertions
+
+| Cypress | Playwright |
+|---------|-----------|
+| `cy.get(s).should('exist')` | `await expect(this.locator(s)).toBeAttached()` |
+| `cy.get(s).should('not.exist')` | `await expect(this.locator(s)).not.toBeAttached()` |
+| `cy.get(s).should('be.visible')` | `await expect(this.locator(s)).toBeVisible()` |
+| `cy.get(s).should('not.be.visible')` | `await expect(this.locator(s)).not.toBeVisible()` |
+| `cy.get(s).should('contain', 'text')` | `await expect(this.locator(s)).toContainText('text')` |
+| `cy.get(s).should('contain.text', 'text')` | `await expect(this.locator(s)).toContainText('text')` |
+| `cy.get(s).should('have.text', 'text')` | `await expect(this.locator(s)).toHaveText('text')` |
+| `cy.get(s).should('have.value', 'v')` | `await expect(this.locator(s)).toHaveValue('v')` |
+| `cy.get(s).should('be.disabled')` | `await expect(this.locator(s)).toBeDisabled()` |
+| `cy.get(s).should('have.length', n)` | `await expect(this.locator(s)).toHaveCount(n)` |
+| `.and('contain', 'x')` | chain: `await expect(loc).toContainText('x')` (separate assertion) |
+| `cy.title().should('include', 't')` | `await expect(this.page).toHaveTitle(/t/)` |
+
+### Waits and Retries
+
+| Cypress | Playwright |
+|---------|-----------|
+| `cy.wait(3000)` | **AVOID.** Use `await expect(locator).toBeVisible()` or `waitForCondition()` instead. Only use `page.waitForTimeout()` as absolute last resort during debugging. |
+| `cy.get(s, { timeout: 60000 })` | `await this.locator(s).waitFor({ state: 'visible', timeout: 60000 })` |
+| `cy.contains(text, { timeout })` | `await this.page.getByText(text).waitFor({ state: 'visible', timeout })` |
+| `cy.intercept('GET', url).as('req')` + `cy.wait('@req')` | `await this.page.waitForResponse(url)` or `page.waitForResponse(resp => resp.url().includes(url))` |
+| `waitForStatus(vm, 'Running', timeout)` | Step driver method using `waitForCondition()` with text-based or API-based polling |
+
+### Resource Lifecycle
+
+| Cypress | Playwright |
+|---------|-----------|
+| `cy.exec('oc create ...')` | `KubernetesClient.createCustomResource(...)` via client step driver |
+| `cy.exec('oc delete ...')` | `KubernetesClient.deleteCustomResource(...)` via client step driver |
+| `cy.exec('oc get ... -o jsonpath')` | `KubernetesClient.getCustomResource(...)` |
+| `cy.deleteResource(kind, name)` | Client step driver: `deleteResource(kind, name, namespace)` |
+| `cy.deleteVM(name, ns)` | Client step driver: `deleteVirtualMachine(name, namespace)` |
+| `cy.startVM(name, ns)` / `cy.stopVM` | Client step driver wrapping K8s patch operations |
+| `cy.createExampleTemplate()` | Client step driver creating template via K8s API |
+
+### Environment and Configuration
+
+| Cypress | Playwright |
+|---------|-----------|
+| `Cypress.env('NON_PRIV')` | `EnvVariables.nonPriv` or `TestConfigManager.getConfig()` |
+| `Cypress.env('TEST_NS')` | `TestConfigManager.getConfig().testNamespace` |
+| `Cypress.env('ARCH')` | `EnvVariables.arch` (add to `env-variables.ts` if missing) |
+| `Cypress.env('GPU')` | `EnvVariables.gpu` (add if missing) |
+| `adminOnlyDescribe(...)` | `test.describe(name, () => { test.skip(EnvVariables.nonPriv, 'Admin only'); ... })` |
+| `adminOnlyIT(...)` | `test(name, () => { test.skip(EnvVariables.nonPriv, 'Admin only'); ... })` |
+| `xit('disabled')` | `test.skip('reason', ...)` or `test.fixme(...)` with Jira link |
+
+### Conditional Logic
+
+| Cypress | Playwright |
+|---------|-----------|
+| `cy.get('body').then($body => { if ($body.find(s).length) { ... } })` | `if (await this.locator(s).count() > 0) { ... }` |
+| `cy.get(s).then($el => { ... })` | `const text = await this.locator(s).textContent()` |
+| Multiple `.then()` chains | Sequential `await` statements |
+
+---
+
+## Structural Transformation Rules
+
+### Rule 1: Flatten Sequential `it` Blocks into Self-Contained Tests
+
+Cypress `testIsolation: false` means `it` blocks share browser state. In Playwright, each `test()` is isolated.
+
+**Cypress pattern (anti-pattern for Playwright):**
+```typescript
+describe('VM lifecycle', () => {
+  before(() => { cy.beforeSpec(); });
+  it('create VM', () => { vm.create(data); });
+  it('verify overview', () => { /* assumes VM exists from prior it */ });
+  it('delete VM', () => { vm.delete(name); });
+});
+```
+
+**Playwright equivalent:**
+```typescript
+test.describe('VM lifecycle', { tag: ['@tier1'] }, () => {
+  test('ID(CNV-XXXXX) Verify VM overview after creation', async ({ page }) => {
+    await withAllure({ suite: 'VM Lifecycle', feature: 'Tier 1', tags: ['@tier1'] });
+    const vmDriver = VMStepDriver.Init(page);
+    const loginDriver = LoginStepDriver.Init(page);
+
+    await test.step('Login and create VM', async () => {
+      await loginDriver.performKubeAdminLogin();
+      await vmDriver.createVM(vmData);
+    });
+
+    await test.step('Verify overview tab', async () => {
+      await vmDriver.navigateToOverview();
+      await vmDriver.verifyOverviewFields(expectedData);
+    });
+
+    await test.step('Cleanup', async () => {
+      await vmDriver.deleteVM(vmData.name, vmData.namespace);
+    });
+  });
+});
+```
+
+### Rule 2: Replace `before`/`after` Hooks with `test.step` Blocks
+
+Cypress hooks that create resources become explicit `test.step` blocks within each test, keeping tests self-contained.
+
+**Exception:** `test.beforeEach` for login is acceptable when ALL tests in a describe need the same login. Prefer the `storageState` mechanism from global setup.
+
+### Rule 3: Replace Custom Commands with Step Drivers
+
+Every `cy.customCommand()` maps to a step driver method that wraps a page object interaction.
+
+| Cypress custom command | Playwright equivalent |
+|------------------------|----------------------|
+| `cy.beforeSpec()` | `loginDriver.performKubeAdminLogin()` (or rely on `storageState`) |
+| `cy.visitVMs()` | `vmListDriver.navigateToVMList(namespace)` |
+| `cy.clickSaveBtn()` | `commons.clickSave()` (via `BasePage`) |
+| `cy.checkTitle(title)` | `await expect(page.getByRole('heading', { name: title })).toBeVisible()` |
+
+### Rule 4: Replace Fixed Waits with Condition-Based Waits
+
+```typescript
+// NEVER: cy.wait(5000) → page.waitForTimeout(5000)
+// ALWAYS: condition-based
+await expect(statusLocator).toContainText('Running', { timeout: 120_000 });
+// or
+await this.waitForCondition(async () => {
+  const text = await statusLocator.textContent();
+  return text?.includes('Running') ?? false;
+}, TestTimeouts.CLUSTER_OPERATION);
+```
+
+### Rule 5: Replace `cy.exec('oc ...')` with KubernetesClient
+
+All cluster interactions go through `KubernetesClient` via a client step driver — never shell commands in tests.
+
+```typescript
+// NEVER
+cy.exec('oc delete vm test-vm -n test-ns');
+// ALWAYS
+await k8sDriver.deleteVirtualMachine('test-vm', 'test-ns');
+```
+
+### Rule 6: Replace `cy.get(...).within(...)` with Scoped Locators
+
+```typescript
+// Cypress
+cy.get('[data-test="modal"]').within(() => {
+  cy.get('[data-test="name"]').type('my-vm');
+  cy.byButtonText('Submit').click();
+});
+
+// Playwright (page object method)
+async fillModalForm(name: string): Promise<void> {
+  const modal = this.locator('[data-test="modal"]');
+  await modal.locator('[data-test="name"]').fill(name);
+  await this.robustClick(modal.locator('button', { hasText: 'Submit' }));
+}
+```
+
+### Rule 7: Handle Conditional Presence without `.then()`
+
+```typescript
+// Cypress
+cy.get('body').then($body => {
+  if ($body.find('[data-test="welcome"]').length > 0) {
+    cy.get('[data-test="welcome"] button').click();
+  }
+});
+
+// Playwright (page object)
+async dismissWelcomeIfPresent(): Promise<void> {
+  const welcome = this.locator('[data-test="welcome"]');
+  if (await welcome.count() > 0) {
+    await this.robustClick(welcome.locator('button'));
+  }
+}
+```
+
+### Rule 8: Map Cypress Retries to Playwright Retries
+
+Cypress per-test `retries: { runMode: N }` becomes Playwright `test.describe.configure({ retries: N })` or is left to the global config. Never use per-test retries to mask flaky selectors — fix the root cause.
+
+---
+
+## File Mapping Convention
+
+| Cypress source | Playwright target |
+|---------------|-------------------|
+| `cypress/views/selector-*.ts` | Locators inside `playwright/src/page-objects/<feature>-page.ts` |
+| `cypress/views/<feature>-flow.ts` | `playwright/src/page-objects/<feature>-page.ts` (interactions) + `playwright/src/step-drivers/<feature>-step-driver.ts` (step wrappers) |
+| `cypress/views/actions.ts` | `playwright/src/page-objects/vm-actions-page.ts` or method in relevant page object |
+| `cypress/views/modals.ts` | Methods within relevant page objects (modal interactions belong to the page that triggers them) |
+| `cypress/views/tab.ts` | `navigateToTab()` methods on page objects that have tabs |
+| `cypress/support/commands.ts` | Split: navigation → page objects, K8s → `KubernetesClient`, login → `LoginStepDriver` |
+| `cypress/support/nav.ts` | `navigate*` methods on page objects |
+| `cypress/support/selectors.ts` | `BasePage` utilities and page object locators |
+| `cypress/types/*.ts` | `playwright/src/types/` or inline in page objects |
+| `cypress/utils/const/*.ts` | `playwright/src/utils/constants/` or `EnvVariables` |
+| `cypress/tests/<tier>/<feature>/*.cy.ts` | `playwright/tests/<tier>/<feature>/<test>.spec.ts` |
+
+---
+
+## Test Isolation Strategies
+
+### Strategy A: Fully Self-Contained (preferred)
+
+Each test creates its resources, runs assertions, and cleans up — even if the Cypress source had a shared `before` hook creating resources for multiple `it` blocks.
+
+Use when: Tests are short enough that resource creation doesn't dominate runtime.
+
+### Strategy B: Shared Resources via `test.describe` Setup
+
+When multiple tests need the same expensive resource (e.g., a running VM):
+
+```typescript
+test.describe('VM tabs', { tag: ['@tier1'] }, () => {
+  let vmDriver: VMStepDriver;
+  let vmName: string;
+
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    vmDriver = VMStepDriver.Init(page);
+    vmName = `test-vm-${Date.now()}`;
+    await vmDriver.createVM({ name: vmName, ... });
+    await page.close();
+  });
+
+  test.afterAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    const driver = VMStepDriver.Init(page);
+    await driver.deleteVM(vmName, namespace);
+    await page.close();
+  });
+
+  test('ID(CNV-XXXXX) overview tab', async ({ page }) => { ... });
+  test('ID(CNV-YYYYY) configuration tab', async ({ page }) => { ... });
+});
+```
+
+Use when: Multiple read-only tests share the same resource and creating it per-test would exceed tier time limits.
+
+### Strategy C: API-Created Resources
+
+Use `KubernetesClient` in `test.beforeAll` to create resources via API (faster than UI creation), then run UI-only assertions in tests.
+
+---
+
+## Migration Checklist
+
+For each Cypress file being migrated:
+
+- [ ] Read the entire Cypress test file and all imported views/constants
+- [ ] Document each `it` block's intent in plain language
+- [ ] Search existing page objects and step drivers for reusable methods
+- [ ] Identify test isolation strategy (A, B, or C)
+- [ ] Create/extend page objects with needed locators and methods
+- [ ] Create/extend step drivers with needed workflow wrappers
+- [ ] Write the spec file using project template
+- [ ] Replace all `cy.wait()` with condition-based waits
+- [ ] Replace all `cy.exec('oc ...')` with KubernetesClient calls
+- [ ] Add `withAllure()` and proper tags
+- [ ] Add `ID(TICKET-XXXXX)` to each test title
+- [ ] Run `npx tsc --noEmit` — zero errors
+- [ ] Run `npm run lint:fix` — clean
+- [ ] Run tests with `PLAYWRIGHT_RETRIES=0` — passing
+- [ ] Verify no orphaned resources after test run
+
+## Things to NEVER Do
+
+- **Never transliterate** — `cy.get(x).click()` → `page.locator(x).click()` is not a migration. Understand intent, use framework APIs.
+- **Never use `page.waitForTimeout()`** as a replacement for `cy.wait()`. Find the condition to wait for.
+- **Never put locators in spec files** when a page object exists or should exist.
+- **Never put locators in step drivers** — locators live in page objects only.
+- **Never import page objects in spec files** when a step driver exists — specs use step drivers.
+- **Never rely on test order** — each `test()` must work independently.
+- **Never skip cleanup** — every created resource must be tracked for deletion.
+- **Never use `cy.exec` equivalents** (`child_process`) — use `KubernetesClient`.
+- **Never ignore `xit` blocks** — migrate as `test.fixme()` with Jira link, or implement if the skip reason is resolved.
