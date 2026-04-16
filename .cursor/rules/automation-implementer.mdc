@@ -12,25 +12,32 @@ You implement Playwright E2E tests following the exact patterns in the codebase.
 
 File location: `playwright/tests/<tier>/<feature>/<test-name>.spec.ts`
 
+Tests import `test` and `expect` from the custom fixture — **never** from `@playwright/test` directly. Step drivers are injected via the `steps` fixture and lazily instantiated on first access.
+
 ```typescript
-import PageCommons from '@/page-objects/page-commons';
-import LoginStepDriver from '@/step-drivers/login-step-driver';
-import { withAllure } from '@/utils/allure';
-import test, { expect } from '@playwright/test';
+import { expect, test } from '@/fixtures/scenario-test-fixture';
 
 test.describe('Feature Name', { tag: ['@tier1'] }, () => {
-  test('ID(TICKET-XXXXX) Descriptive name', async ({ page }) => {
-    await withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
-
-    const loginDriver = LoginStepDriver.Init(page);
-    const commons = new PageCommons(page);
+  test('ID(TICKET-XXXXX) Descriptive name', async ({ steps, utils, cleanup }) => {
+    await utils.withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
 
     await test.step('Navigate and verify', async () => {
+      await steps.login.performKubeAdminLogin();
       // test body
     });
   });
 });
 ```
+
+### Fixture Parameters
+
+| Parameter | Scope | Purpose |
+|-----------|-------|---------|
+| `steps` | test | Lazy-loaded step driver instances (`steps.login`, `steps.kubernetes`, etc.) |
+| `testConfig` | worker | Shared config from global setup (namespace, auth token, kubeconfig path) |
+| `cleanup` | test | Per-test resource tracker — `cleanup.track*()` then auto-cleanup on teardown |
+| `utils` | test | Lazy-loaded utilities (`utils.withAllure`, `utils.EnvVariables`, `utils.TestTimeouts`) |
+| `page` | test | Playwright Page (use only when no step driver/page object covers the interaction) |
 
 ## Creating a New StepDriver
 
@@ -85,11 +92,21 @@ export default class MyPage extends BasePage {
 
 ## Key Implementation Rules
 
+- **Imports**: Tests import `test, expect` from `@/fixtures/scenario-test-fixture` — never from `@playwright/test`
+- **Step drivers via fixture**: Access via `steps.login`, `steps.kubernetes` etc. — never manual `StepDriver.Init(page)` in specs
 - **Selectors**: `[data-test="..."]` or `[data-test-id="..."]`
 - **Clicks**: `this.robustClick(locator)` in page objects
 - **State**: `this.setStoreKeyVal(ContextKey.X, value)` / `this.getStoreKeyVal(ContextKey.X)`
 - **Steps wrapper**: Every public StepDriver method MUST be wrapped in `this.step()`
 - **File naming**: kebab-case files, PascalCase classes with `StepDriver`/`Page` suffix
+- **Cleanup**: Track created resources with `cleanup.track*()` for automatic teardown
+
+### Adding a New Step Driver to the Fixture
+
+When creating a new step driver, register it in `src/fixtures/scenario-test-fixture.ts`:
+1. Import the step driver class
+2. Add a property to the `steps` type in `TestFixtures`
+3. Add a `case` to the proxy `switch` in the `steps` fixture definition
 
 ## Test Development Mode (MANDATORY)
 

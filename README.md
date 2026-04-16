@@ -28,8 +28,15 @@ This framework follows a layered architecture pattern using the **StepDriver** p
 ```
 ┌─────────────────────────────────────────────────┐
 │  Tests (.spec.ts)                               │  ← High-level test scenarios
-│  - Describes user flows                         │
-│  - Uses StepDrivers for actions                 │
+│  - import { test, expect } from fixture         │
+│  - Receives steps, cleanup, utils, testConfig   │
+└─────────────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────────────┐
+│  Fixtures (src/fixtures/)                       │  ← Dependency injection
+│  - scenario-test-fixture.ts                     │
+│  - Lazy-loads StepDrivers into `steps.*`        │
+│  - Provides cleanup, utils, testConfig          │
 └─────────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────────┐
@@ -83,6 +90,7 @@ Contains the actual test files that define test scenarios and user flows. Each `
 ### Source Code (`src/`)
 The main implementation organized into focused modules:
 
+- **`fixtures/`** - Custom Playwright fixtures (`scenario-test-fixture.ts`) providing dependency injection for step drivers, config, cleanup, and utilities
 - **`step-drivers/`** - Unified action layer combining step reporting and orchestration logic
 - **`page-objects/`** - UI interaction layer implementing the Page Object Model pattern
 - **`clients/`** - API clients for interacting with OpenShift/Kubernetes clusters
@@ -226,36 +234,58 @@ npm run test-playwright-report
 <a id="writing-tests"></a>
 ## ✍️ Writing Tests
 
+### Custom Fixtures
+
+Tests use a custom fixture (`src/fixtures/scenario-test-fixture.ts`) that extends Playwright's base `test` with dependency-injected step drivers, configuration, utilities, and automatic resource cleanup. **Always import `test` and `expect` from the fixture — never from `@playwright/test` directly.**
+
+| Fixture | Scope | Purpose |
+|---------|-------|---------|
+| `steps` | test | Lazy-loaded step driver instances (e.g., `steps.login`, `steps.kubernetes`). Drivers are created on first access and cached for the test's lifetime. |
+| `testConfig` | worker | Shared test configuration from global setup — namespace, auth token, kubeconfig path. |
+| `cleanup` | test | Per-test resource tracker. Call `cleanup.track*()` for K8s resources created during the test; they're deleted automatically on teardown. |
+| `utils` | test | Lazy-loaded utilities — `utils.withAllure()`, `utils.EnvVariables`, `utils.TestTimeouts`, `utils.waitForCondition()`. |
+| `page` | test | Standard Playwright Page. Use only when no step driver or page object covers the interaction. |
+
 ### Basic Test Structure
 
 ```typescript
-import PageCommons from '@/page-objects/page-commons';
-import LoginStepDriver from '@/step-drivers/login-step-driver';
-import { withAllure } from '@/utils/allure';
-import { EnvVariables } from '@/utils/env-variables';
-import test, { expect } from '@playwright/test';
+import { expect, test } from '@/fixtures/scenario-test-fixture';
 
-test.describe('Feature Name', () => {
-  test('ID(TICKET-001) should verify feature behavior @tier1', async ({ page }) => {
-    await withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
-
-    const loginDriver = LoginStepDriver.Init(page);
-    const commons = new PageCommons(page);
+test.describe('Feature Name', { tag: ['@tier1'] }, () => {
+  test('ID(TICKET-001) should verify feature behavior', async ({ steps, utils }) => {
+    await utils.withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
 
     await test.step('Login to console', async () => {
-      await loginDriver.performKubeAdminLogin();
-      await page.waitForLoadState('load');
-    });
-
-    await test.step('Navigate to target page', async () => {
-      await page.goto('/k8s/cluster/projects');
-      await page.waitForLoadState('load');
+      await steps.login.performKubeAdminLogin();
     });
 
     await test.step('Verify expected state', async () => {
-      const titleVisible = await commons.verifyTitle('Projects');
-      expect(titleVisible).toBeTruthy();
+      // Use steps.* for all interactions
     });
+  });
+});
+```
+
+### Test with Resource Cleanup
+
+```typescript
+import { expect, test } from '@/fixtures/scenario-test-fixture';
+
+test.describe('Resource CRUD', { tag: ['@tier1'] }, () => {
+  test('ID(TICKET-002) create and verify resource', async ({ steps, utils, cleanup, testConfig }) => {
+    await utils.withAllure({ suite: 'Resource CRUD', feature: 'Tier 1', tags: ['@tier1'] });
+
+    const namespace = testConfig.testNamespace;
+
+    await test.step('Create resource via API', async () => {
+      await steps.kubernetes.createResource('my-resource', namespace);
+      cleanup.trackCustomResource('my-resource', namespace, 'example.io', 'v1', 'myresources');
+    });
+
+    await test.step('Verify in UI', async () => {
+      // assertions...
+    });
+    // cleanup runs automatically after test (pass or fail)
   });
 });
 ```
@@ -266,8 +296,9 @@ To add tests for your console plugin:
 
 1. **Create page objects** in `src/page-objects/` extending `BasePage` or `PageCommons`
 2. **Create step drivers** in `src/step-drivers/` extending `BasePageStepDriver` or `BaseClientStepDriver`
-3. **Add API operations** by extending `KubernetesClient` with handler modules in `src/clients/handlers/`
-4. **Write tests** in `tests/` using your step drivers
+3. **Register step drivers** in `src/fixtures/scenario-test-fixture.ts` — add the type to `TestFixtures['steps']` and a `case` to the proxy
+4. **Add API operations** by extending `KubernetesClient` with handler modules in `src/clients/handlers/`
+5. **Write tests** in `tests/` importing `test, expect` from `@/fixtures/scenario-test-fixture`
 
 #### Custom Page Object
 
@@ -563,7 +594,8 @@ If authentication fails:
 ## 🎯 Best Practices
 
 ### 1. Use the Layer Architecture
-- Tests only call StepDrivers
+- Tests import `test, expect` from `@/fixtures/scenario-test-fixture` — never from `@playwright/test`
+- Tests access step drivers via `steps.*` fixture — never manual instantiation
 - StepDrivers use Page Objects and Clients directly
 - Clients handle API interactions
 
@@ -844,7 +876,8 @@ To use the agentic workflow:
 
 | Convention | Enforced by |
 |-----------|-------------|
-| Layered architecture (spec → step drivers → page objects → clients) | Orchestrator, Code Reviewer, Automation Implementer |
+| Fixture imports (`test, expect` from `@/fixtures/scenario-test-fixture`) | Code Reviewer, Automation Implementer, Cypress Migrator |
+| Layered architecture (spec → fixtures → step drivers → page objects → clients) | Orchestrator, Code Reviewer, Automation Implementer |
 | `withAllure(...)` with suite/feature/tags | Code Reviewer, Automation Implementer |
 | Page encapsulation (`page` access only in page objects) | Code Reviewer, Automation Implementer |
 | UI-first navigation, URL fallback only in page object methods | Automation Implementer |

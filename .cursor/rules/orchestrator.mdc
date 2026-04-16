@@ -53,7 +53,9 @@ The **QA Architect** answers: *"What framework components do we need to support 
 All roles must operate within this layered architecture:
 
 ```
-Tests (.spec.ts)
+Tests (.spec.ts) → import { test, expect } from '@/fixtures/scenario-test-fixture'
+  ↓
+Fixtures (src/fixtures/) → inject steps, cleanup, utils, testConfig
   ↓
 StepDrivers (src/step-drivers/) → extend BasePageStepDriver or BaseClientStepDriver
   ↓
