@@ -28,16 +28,20 @@ Client → extends BaseClient (KubernetesClient)
 
 ### Test File Pattern
 ```typescript
-import { withAllure } from '@/utils/allure';
-import test, { expect } from '@playwright/test';
+import { expect, test } from '@/fixtures/scenario-test-fixture';
 
 test.describe('Feature Name', { tag: ['@tier1'] }, () => {
-  test('ID(TICKET-XXXXX) Description', async ({ page }) => {
-    await withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
-    // test body
+  test('ID(TICKET-XXXXX) Description', async ({ steps, utils, cleanup }) => {
+    await utils.withAllure({ suite: 'Feature Name', feature: 'Tier 1', tags: ['@tier1'] });
+    // test body using steps.login, steps.kubernetes, etc.
   });
 });
 ```
+
+**Violations to flag:**
+- Tests importing `test` or `expect` from `@playwright/test` instead of `@/fixtures/scenario-test-fixture`
+- Tests manually instantiating step drivers with `StepDriver.Init(page)` instead of using `steps.*`
+- Tests not using `cleanup.track*()` for created K8s resources
 
 ### StepDriver Pattern
 ```typescript
@@ -60,10 +64,13 @@ async clickAction(): Promise<void> {
 ## Review Checklist
 
 ### Must-Have
-- [ ] Has `withAllure()` call with suite/feature/tags
+- [ ] Imports `test, expect` from `@/fixtures/scenario-test-fixture`
+- [ ] Uses `steps.*` fixture for step drivers (not manual instantiation)
+- [ ] Has `utils.withAllure()` call with suite/feature/tags
 - [ ] Assertions include descriptive messages
 - [ ] Test ID format: `ID(TICKET-XXXXX)` in test title
 - [ ] Proper tags on describe and test
+- [ ] Created resources tracked via `cleanup.track*()`
 
 ### Selectors (PageObjects only)
 - [ ] Prefer `[data-test="..."]` or `[data-test-id="..."]`

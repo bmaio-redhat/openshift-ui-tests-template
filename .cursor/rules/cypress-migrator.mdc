@@ -202,45 +202,44 @@ describe('VM lifecycle', () => {
 
 **Playwright equivalent:**
 ```typescript
+import { expect, test } from '@/fixtures/scenario-test-fixture';
+
 test.describe('VM lifecycle', { tag: ['@tier1'] }, () => {
-  test('ID(CNV-XXXXX) Verify VM overview after creation', async ({ page }) => {
-    await withAllure({ suite: 'VM Lifecycle', feature: 'Tier 1', tags: ['@tier1'] });
-    const vmDriver = VMStepDriver.Init(page);
-    const loginDriver = LoginStepDriver.Init(page);
+  test('ID(CNV-XXXXX) Verify VM overview after creation', async ({ steps, utils, cleanup }) => {
+    await utils.withAllure({ suite: 'VM Lifecycle', feature: 'Tier 1', tags: ['@tier1'] });
 
     await test.step('Login and create VM', async () => {
-      await loginDriver.performKubeAdminLogin();
-      await vmDriver.createVM(vmData);
+      await steps.login.performKubeAdminLogin();
+      await steps.vmCreationWizard.createVM(vmData);
+      cleanup.trackCustomResource(vmData.name, vmData.namespace, 'kubevirt.io', 'v1', 'virtualmachines', 'VirtualMachine');
     });
 
     await test.step('Verify overview tab', async () => {
-      await vmDriver.navigateToOverview();
-      await vmDriver.verifyOverviewFields(expectedData);
+      await steps.virtualMachineDetail.navigateToOverview();
+      await steps.virtualMachineDetail.verifyOverviewFields(expectedData);
     });
-
-    await test.step('Cleanup', async () => {
-      await vmDriver.deleteVM(vmData.name, vmData.namespace);
-    });
+    // cleanup runs automatically after test
   });
 });
 ```
 
-### Rule 2: Replace `before`/`after` Hooks with `test.step` Blocks
+### Rule 2: Replace `before`/`after` Hooks with `test.step` Blocks and `cleanup`
 
-Cypress hooks that create resources become explicit `test.step` blocks within each test, keeping tests self-contained.
+Cypress hooks that create resources become explicit `test.step` blocks within each test. Resource cleanup is handled by the `cleanup` fixture — track resources with `cleanup.track*()` and they are deleted automatically after the test.
 
 **Exception:** `test.beforeEach` for login is acceptable when ALL tests in a describe need the same login. Prefer the `storageState` mechanism from global setup.
 
-### Rule 3: Replace Custom Commands with Step Drivers
+### Rule 3: Replace Custom Commands with Fixture-Injected Step Drivers
 
-Every `cy.customCommand()` maps to a step driver method that wraps a page object interaction.
+Every `cy.customCommand()` maps to a step driver method accessed via the `steps` fixture. Tests **never** manually instantiate step drivers.
 
 | Cypress custom command | Playwright equivalent |
 |------------------------|----------------------|
-| `cy.beforeSpec()` | `loginDriver.performKubeAdminLogin()` (or rely on `storageState`) |
-| `cy.visitVMs()` | `vmListDriver.navigateToVMList(namespace)` |
-| `cy.clickSaveBtn()` | `commons.clickSave()` (via `BasePage`) |
+| `cy.beforeSpec()` | `steps.login.performKubeAdminLogin()` (or rely on `storageState`) |
+| `cy.visitVMs()` | `steps.virtualMachines.navigateToVMList(namespace)` |
+| `cy.clickSaveBtn()` | `steps.pageCommons.clickSave()` |
 | `cy.checkTitle(title)` | `await expect(page.getByRole('heading', { name: title })).toBeVisible()` |
+| `cy.deleteResource(...)` | `cleanup.trackCustomResource(...)` — auto-deleted after test |
 
 ### Rule 4: Replace Fixed Waits with Condition-Based Waits
 
@@ -339,27 +338,29 @@ Use when: Tests are short enough that resource creation doesn't dominate runtime
 When multiple tests need the same expensive resource (e.g., a running VM):
 
 ```typescript
+import { expect, test } from '@/fixtures/scenario-test-fixture';
+
 test.describe('VM tabs', { tag: ['@tier1'] }, () => {
-  let vmDriver: VMStepDriver;
   let vmName: string;
+  const namespace = 'test-ns';
 
   test.beforeAll(async ({ browser }) => {
     const page = await browser.newPage();
-    vmDriver = VMStepDriver.Init(page);
+    const k8sDriver = KubernetesStepDriver.Init(page);
     vmName = `test-vm-${Date.now()}`;
-    await vmDriver.createVM({ name: vmName, ... });
+    await k8sDriver.createVM({ name: vmName, namespace });
     await page.close();
   });
 
   test.afterAll(async ({ browser }) => {
     const page = await browser.newPage();
-    const driver = VMStepDriver.Init(page);
-    await driver.deleteVM(vmName, namespace);
+    const k8sDriver = KubernetesStepDriver.Init(page);
+    await k8sDriver.deleteVM(vmName, namespace);
     await page.close();
   });
 
-  test('ID(CNV-XXXXX) overview tab', async ({ page }) => { ... });
-  test('ID(CNV-YYYYY) configuration tab', async ({ page }) => { ... });
+  test('ID(CNV-XXXXX) overview tab', async ({ steps, utils }) => { ... });
+  test('ID(CNV-YYYYY) configuration tab', async ({ steps, utils }) => { ... });
 });
 ```
 
@@ -393,12 +394,14 @@ For each Cypress file being migrated:
 
 ## Things to NEVER Do
 
+- **Never import `test` or `expect` from `@playwright/test`** — always import from `@/fixtures/scenario-test-fixture`.
+- **Never manually instantiate step drivers** with `StepDriver.Init(page)` in spec files — use the `steps` fixture.
 - **Never transliterate** — `cy.get(x).click()` → `page.locator(x).click()` is not a migration. Understand intent, use framework APIs.
 - **Never use `page.waitForTimeout()`** as a replacement for `cy.wait()`. Find the condition to wait for.
 - **Never put locators in spec files** when a page object exists or should exist.
 - **Never put locators in step drivers** — locators live in page objects only.
 - **Never import page objects in spec files** when a step driver exists — specs use step drivers.
 - **Never rely on test order** — each `test()` must work independently.
-- **Never skip cleanup** — every created resource must be tracked for deletion.
+- **Never skip cleanup** — every created resource must be tracked with `cleanup.track*()`.
 - **Never use `cy.exec` equivalents** (`child_process`) — use `KubernetesClient`.
 - **Never ignore `xit` blocks** — migrate as `test.fixme()` with Jira link, or implement if the skip reason is resolved.
