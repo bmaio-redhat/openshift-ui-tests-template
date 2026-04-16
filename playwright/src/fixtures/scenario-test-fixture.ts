@@ -34,6 +34,7 @@
  */
 
 import LoginStepDriver from '@/step-drivers/login-step-driver';
+import PageCommonsStepDriver from '@/step-drivers/page-commons-step-driver';
 import { EnvVariables } from '@/utils/env-variables';
 import { SharedTestConfig, TestConfigManager } from '@/utils/test-config';
 import { expect, test as base } from '@playwright/test';
@@ -50,8 +51,8 @@ type TestFixtures = {
   cleanup: CleanupFixture;
   steps: {
     login: LoginStepDriver;
+    pageCommons: PageCommonsStepDriver;
     // Add new step drivers here as the framework grows:
-    // pageCommons: PageCommonsStepDriver;
     // kubernetes: KubernetesStepDriver;
   };
   utils: TestUtilsType;
@@ -100,10 +101,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           case 'login':
             cache[prop] = LoginStepDriver.Init(page);
             break;
+          case 'pageCommons':
+            cache[prop] = PageCommonsStepDriver.Init(page);
+            break;
           // Add new step drivers here:
-          // case 'pageCommons':
-          //   cache[prop] = PageCommonsStepDriver.Init(page);
-          //   break;
           // case 'kubernetes':
           //   cache[prop] = KubernetesStepDriver.Init(page);
           //   break;

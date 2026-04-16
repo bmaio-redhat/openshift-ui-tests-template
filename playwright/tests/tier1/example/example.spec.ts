@@ -2,7 +2,6 @@ import { expect, test } from '@/fixtures/scenario-test-fixture';
 
 test.describe('OpenShift Console - Auth & Navigation', { tag: ['@tier1'] }, () => {
   test('ID(TEMPLATE-001) Authenticate and verify console landing page', async ({
-    page,
     steps,
     utils,
   }) => {
@@ -10,29 +9,26 @@ test.describe('OpenShift Console - Auth & Navigation', { tag: ['@tier1'] }, () =
 
     await test.step('Ensure authenticated session', async () => {
       await steps.login.performKubeAdminLogin();
-      await page.waitForLoadState('load');
     });
 
-    await test.step('Verify authenticated state (not on login page)', async () => {
-      await expect(page).not.toHaveURL(/\/(auth\/login|oauth\/authorize)/, { timeout: 15_000 });
+    await test.step('Verify authenticated state', async () => {
+      const authenticated = await steps.pageCommons.verifyAuthenticated();
+      expect(authenticated, 'User should not be on the login page').toBeTruthy();
     });
 
     await test.step('Verify console page title', async () => {
-      await expect(page).toHaveTitle(/Red Hat OpenShift/i);
+      const titleMatches = await steps.pageCommons.verifyPageTitle(/Red Hat OpenShift/i);
+      expect(titleMatches, 'Page title should contain "Red Hat OpenShift"').toBeTruthy();
     });
 
     await test.step('Verify user dropdown is visible', async () => {
-      const userDropdown = page
-        .locator(
-          '[data-test="user-dropdown"], [data-test="username"], [data-test="user-dropdown-toggle"]',
-        )
-        .first();
-      await expect(userDropdown).toBeVisible({ timeout: 30_000 });
+      const visible = await steps.pageCommons.verifyUserDropdownVisible();
+      expect(visible, 'User dropdown should be visible').toBeTruthy();
     });
 
     await test.step('Verify perspective switcher is present', async () => {
-      const perspectiveToggle = page.locator('[data-test-id="perspective-switcher-toggle"]');
-      await expect(perspectiveToggle).toBeVisible({ timeout: 15_000 });
+      const visible = await steps.pageCommons.verifyPerspectiveSwitcherVisible();
+      expect(visible, 'Perspective switcher should be visible').toBeTruthy();
     });
   });
 });
