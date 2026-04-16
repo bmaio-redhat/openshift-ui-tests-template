@@ -291,4 +291,39 @@ export default class PageCommons extends BasePage {
     await kebabButton.waitFor({ state: 'visible', timeout: TestTimeouts.UI_ACTION_COMPLETE });
     await this.robustClick(kebabButton);
   }
+
+  async isAuthenticated(timeout = TestTimeouts.UI_VISIBILITY_QUICK): Promise<boolean> {
+    try {
+      await this.page.waitForURL(/\/(?!auth\/login|oauth\/authorize)/, { timeout });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async isUserDropdownVisible(timeout = TestTimeouts.DEFAULT): Promise<boolean> {
+    const userDropdown = this.locator(
+      '[data-test="user-dropdown"], [data-test="username"], [data-test="user-dropdown-toggle"]',
+    ).first();
+    try {
+      await userDropdown.waitFor({ state: 'visible', timeout });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async isPerspectiveSwitcherVisible(timeout = TestTimeouts.UI_VISIBILITY_QUICK): Promise<boolean> {
+    const toggle = this.locator('[data-test-id="perspective-switcher-toggle"]');
+    try {
+      await toggle.waitFor({ state: 'visible', timeout });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async getPageTitle(): Promise<string> {
+    return await this.page.title();
+  }
 }
