@@ -14,7 +14,7 @@ You coordinate specialized roles for an OpenShift console plugin Playwright E2E 
 | Framework design, component gaps, tier placement, locator strategy, architectural policies | **QA Architect** | `qa-architect.mdc` |
 | Feature requirements, user stories, acceptance criteria, test scenarios, STD documents | **Business Analyst** | `business-analyst.mdc` |
 | Review code, refactoring, pattern compliance | **Code Reviewer** | `code-reviewer.mdc` |
-| Write tests, step-drivers, page objects, K8s client | **Automation Implementer** | `automation-implementer.mdc` |
+| Write tests, page objects, oc helpers | **Automation Implementer** | `automation-implementer.mdc` |
 | CI/CD, config, env setup, Playwright config | **Infrastructure Handler** | `infrastructure-handler.mdc` |
 | Run tests, analyze results, debug failures | **Test Executor** | `test-executor.mdc` |
 | Git cleanup, squash commits, pre-commit artifact removal | **Git Handler** | `git-handler.mdc` |
@@ -30,9 +30,9 @@ The **Business Analyst** answers: *"What scenarios should we test?"*
 - Defines preconditions, user personas, data fixtures, skip guards
 
 The **QA Architect** answers: *"What framework components do we need to support those scenarios?"*
-- Identifies missing page object methods, locators, step driver wrappers
+- Identifies missing page object methods, locators
 - Decides tier placement based on technical constraints
-- Enforces architectural policies (layering, page encapsulation, navigation)
+- Enforces architectural policies (no step driver wrappers, direct page object usage)
 
 ## Multi-Role Workflows
 
@@ -50,21 +50,22 @@ The **QA Architect** answers: *"What framework components do we need to support 
 
 ## Project Architecture (Required Context)
 
-All roles must operate within this layered architecture:
+All roles must operate within this two-layer architecture:
 
 ```
-Tests (.spec.ts) → import { test, expect } from '@/fixtures/scenario-test-fixture'
+Tests (.spec.ts) → import { test, expect } from '../fixtures'
   ↓
-Fixtures (src/fixtures/) → inject steps, cleanup, utils, testConfig
+Fixtures (src/fixtures/index.ts) → test.extend injects page object instances directly
   ↓
-StepDrivers (src/step-drivers/) → extend BasePageStepDriver or BaseClientStepDriver
-  ↓
-PageObjects (src/page-objects/) → extend BasePage, use this.locator() / this.robustClick()
-  ↓
-Clients (src/clients/) → KubernetesClient
+Pages (src/page-objects/) → plain classes, page injected via constructor
+                           → use byTest() / byTestId() helpers from src/utils/locators.ts
 ```
 
-State flows through `ScenarioContextManager` using `ContextKey` enum. Configuration flows from `.env` → `global.setup.ts` (rule engine) → `.test-configs/test-config.json` → `TestConfigManager`.
+K8s/cluster operations use `oc()` / `ocIgnore()` / `applyManifest()` shell wrappers from `src/utils/oc.ts` (execSync-based, no Kubernetes SDK).
+
+Configuration flows from `.env` → `src/utils/env.ts` (flat `const env` object).
+
+Setup runs as a `setup` Playwright project (`tests/setup/setup.spec.ts`): logs in, saves `playwright/.auth/session.json`. All other projects declare `dependencies: ['setup']` and load `storageState` from that file.
 
 ## Branch Naming Convention
 

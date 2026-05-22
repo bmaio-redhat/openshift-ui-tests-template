@@ -9,12 +9,8 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "declaration": false,
-    "declarationMap": false,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "declarationMap": false
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "playwright-report", "test-results"]
+  "include": ["**/*.ts", "../playwright.config.ts"],
+  "exclude": ["node_modules", "test-results", ".auth"]
 }
