@@ -19,36 +19,38 @@ You do NOT design test scenarios — that is the Business Analyst's role.
 | Define tier placement based on technical constraints | Define preconditions or cleanup for individual tests |
 | Enforce architectural policies (layering, encapsulation, navigation) | Map tickets to test cases |
 
-## Layered Architecture
+## Architecture
 
 ```
-Tests (.spec.ts) → never import page objects/clients directly
+Tests (.spec.ts) → import { test, expect } from '../fixtures'
   ↓
-StepDrivers (src/step-drivers/) → extend BasePageStepDriver or BaseClientStepDriver
+Fixtures (src/fixtures/index.ts) → test.extend injects page object instances directly
   ↓
-PageObjects (src/page-objects/) → extend BasePage, own ALL locators and page interactions
-  ↓
-Clients (src/clients/) → KubernetesClient
+Pages (src/page-objects/) → plain classes, constructor(private readonly page: Page)
+                           → use byTest() / byTestId() from src/utils/locators.ts
 ```
+
+No step driver layer. No base class inheritance. No Kubernetes SDK. K8s operations use `oc()` / `ocIgnore()` / `applyManifest()` from `src/utils/oc.ts`.
 
 ## Architectural Policies (MANDATORY)
 
-### 1. Page Encapsulation
-`page` must NEVER be used in test files or step drivers. All interactions go through page objects.
+### 1. Plain Page Classes
+Page objects are plain TypeScript classes. No `BasePage` inheritance. Constructor receives `page: Page`.
 
-### 2. UI-First Navigation
-Tests navigate through the UI (sidebar, tabs) — never via `page.goto()`. `page.goto()` is acceptable ONLY inside page object `navigate*` methods.
+### 2. Direct Fixture Injection
+Tests import `{ test, expect }` from `../../src/fixtures` and destructure page objects directly. Page objects are **never** imported directly in test files — they arrive via the fixture.
 
-### 3. Locator Strategy
-- Prefer `[data-test="..."]` or `[data-test-id="..."]` attributes
-- Single-use locators are defined inline in methods; shared locators (2+ methods) are class properties
-- Use `hasText` or `filter()` for disambiguation
+### 3. UI-First Navigation
+Tests navigate through the UI (sidebar, tabs) — never via `page.goto()`. `page.goto()` is acceptable ONLY inside page object navigation methods.
 
-### 4. Step Wrapper Requirement
-Every public method in a StepDriver must be wrapped in `this.step('description', ...)` for Allure reporting.
+### 4. Locator Strategy
+- Always use `byTest(page, 'selector-id')` or `byTestId(page, 'selector-id')` helpers from `src/utils/locators.ts`
+- Page-specific selector IDs are defined as `const` at the top of the page file
+- Shared selector IDs (used in multiple page files) go in `src/utils/constants.ts`
+- Use `filter({ hasText })` or `getByRole` for disambiguation — never brittle CSS class selectors
 
 ### 5. Test Isolation
-Tests are self-contained: create what they need, track cleanup, and avoid shared resource patterns. Use dedicated namespaces for resource-creating tests.
+Tests are self-contained: create what they need using `oc` helpers, clean up in `afterAll` / `afterEach`. Avoid shared mutable state between tests.
 
 ## Tier Placement Criteria
 

@@ -5,21 +5,14 @@ dist
 /coverage
 .DS_Store
 .idea
-.kubeconfigs
-.storage-states
-.test-configs
-.test-data
-allure-results/
-test-results/
+
+# Test auth state
+playwright/.auth/
+
+# Test artifacts
+playwright/test-results/
 playwright-report/
 playwright/.cache/
-.test-config.json
-junit-results/
-.pids/
-debug-screenshots/
-retry-videos/
+blob-report/
 *.webm
 *.png
-blob-report/
-.playwright-mcp/
-allure-report/
